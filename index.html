@@ -1,110 +1,105 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Blind Assist AI</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blind Assist AI (Fixed Version)</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<!-- TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0"></script>
 
-    <style>
-        body {
-            margin: 0;
-            font-family: Arial;
-            background: black;
-            color: white;
-            text-align: center;
-        }
-        video, canvas {
-            width: 100%;
-            height: auto;
-        }
-        #btn {
-            background: #0a84ff;
-            padding: 15px;
-            color: white;
-            font-size: 18px;
-            border: none;
-            width: 100%;
-        }
-    </style>
+<!-- Coco SSD AI Model -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
+
+<style>
+    body { background: #000; color: white; text-align: center; margin: 0; }
+    video, canvas { width: 100%; }
+    button { padding: 15px; background: #0a84ff; border: none; color: white; font-size: 20px; width: 100%; }
+</style>
 </head>
 <body>
 
 <h2>Blind Assist AI (Object Detection + Voice)</h2>
 
-<button id="btn">Start Camera (Back Camera)</button>
+<button id="startBtn">Start Back Camera</button>
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
 
 <script>
-    let video = document.getElementById("video");
-    let canvas = document.getElementById("canvas");
-    let ctx = canvas.getContext("2d");
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
+let model;
+let lastSpoken = "";
+let cooldown = false;
 
-    let model;
-    let lastSpoken = "";
-    let speakingCooldown = false;
+// Load model
+cocoSsd.load().then(m => {
+    model = m;
+    console.log("Model Loaded Successfully!");
+});
 
-    // Load AI model
-    cocoSsd.load().then(m => {
-        model = m;
-        console.log("Model Loaded!");
-    });
-
-    // BACK CAMERA SE START
-    document.getElementById("btn").onclick = async () => {
+// Start Back Camera
+document.getElementById("startBtn").onclick = async function () {
+    try {
         let stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { exact: "environment" } }, // BACK CAMERA
+            video: { facingMode: "environment" },
             audio: false
         });
-
         video.srcObject = stream;
-        detectLoop();
-    };
 
-    // AI Detection Loop
-    async function detectLoop() {
-        if (!model) return requestAnimationFrame(detectLoop);
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const predictions = await model.detect(video);
-        
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(video, 0, 0);
-
-        predictions.forEach(pred => {
-            ctx.strokeStyle = "red";
-            ctx.lineWidth = 2;
-            ctx.strokeRect(pred.bbox[0], pred.bbox[1], pred.bbox[2], pred.bbox[3]);
-
-            ctx.fillStyle = "yellow";
-            ctx.font = "20px Arial";
-            ctx.fillText(pred.class, pred.bbox[0], pred.bbox[1] - 5);
-
-            speak(pred.class);
-        });
-
-        requestAnimationFrame(detectLoop);
+        video.onloadedmetadata = () => {
+            video.play();
+            detect();
+        };
+    } catch (err) {
+        alert("Camera Permission Needed!");
     }
+};
 
-    // Text-to-speech
-    function speak(text) {
-        if (speakingCooldown) return;
-        if (text === lastSpoken) return;
+// Detection Loop
+async function detect() {
+    if (!model) return requestAnimationFrame(detect);
 
-        let msg = new SpeechSynthesisUtterance(text);
-        msg.lang = "en-US";
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-        speechSynthesis.speak(msg);
-        lastSpoken = text;
+    const predictions = await model.detect(video);
 
-        speakingCooldown = true;
-        setTimeout(() => speakingCooldown = false, 1500); // 1.5 second cooldown
-    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    predictions.forEach(p => {
+        // Draw box
+        ctx.strokeStyle = "lime";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(...p.bbox);
+
+        // Label
+        ctx.fillStyle = "yellow";
+        ctx.font = "20px Arial";
+        ctx.fillText(p.class, p.bbox[0], p.bbox[1] > 20 ? p.bbox[1] - 10 : 20);
+
+        talk(p.class);
+    });
+
+    requestAnimationFrame(detect);
+}
+
+// Voice Output
+function talk(text) {
+    if (cooldown) return;
+    if (text === lastSpoken) return;
+
+    let msg = new SpeechSynthesisUtterance(text);
+    msg.lang = "en-US";
+
+    speechSynthesis.speak(msg);
+    lastSpoken = text;
+
+    cooldown = true;
+    setTimeout(() => cooldown = false, 1500);
+}
 </script>
 
 </body>
